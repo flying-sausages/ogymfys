@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+#############################################
+###    Connection
+#############################################
+#
+# define a hostname in your .ssh/config. use key-based authentication.
+# You could also define this to be "user@host -p PORT", but you'll have to insert your password a couple times
+remoteHost="seedbox"
+# path to remote directory that will be locally mounted via sshfs
+# if sshfs is not being used, this will be the directory that will
+# Use a full path
+remoteMusicDir="/home/user/rtorrent/downloads/RED/"
+# Maximum transfer speed in KB/s, would highly suggest leaving yourself at least 200KB/s of the max you can get so you don't choke your network on longer transfers
+# Remember, 1KB/s = 8kbps. 
+rsyncSpeedLimit=59000
+#
+#
+#############################################
+###    Local Folders & Backups
+#############################################
+#
+#
+#path where folders for queues will be created.
+#This directory will be made for you in case it doesn't exist
+localTempDir=/mnt/c/tmp/ogymfys
+#path where the folders with processed media will go
+localDestDir=~/music/destination/
+#
+#If you still want to keep a copy of the original data on the disk, set this to true.
+#Setting this to false will delete all the downloaded version of the data and not keep a local backup
+keepBackupsOfData=true
+#Path which is checked for the last time data has been downloaded and backed up.
+#The downloaded copies of files will be downloaded to this directory
+#MAKE SURE THAT THE PATH IS PROPERLY POSIX ESCAPED
+localBackupDir=~/music/RED-backup
+#
+# Change this to true if you have nothing in the download folder yet.
+# Once you have something there, change it back to false
+# This is necessary as we compare the last time something was added 
+isBackupEmpty=false
+# Date which to sync from in the event the backup folder is empty
+dateToSyncFrom="Jan 1 1970 12:45"
+#
+#
+#############################################
+###    Transcoding flac options
+#############################################
+#
+#Use false if you don't want to process FLACs
+transcodeFlac=true
+#arguments to pass to ffmpeg for flac processing
+#This argument can be left empty most of the time, unless you know what you need.
+#For conversion to ALAC use "-acodec alac"
+ffmpegFlacOptions="-acodec alac"
+#For conversion to ALAC use ".m4a"
+#For conversion to AIFF use ".aif"
+#MAKE SURE TO INCLUDE THE DOT
+ffmpegFlacNewExtension=".m4a"
+#
+#############################################
+###    Technical limitations
+#############################################
+#
+# The amount of parallel processes you want to run at the same time
+threadsToUse=4
+## Integer, number of seconds to wait before moving a folder to the destination
+# Use 0 if you're not using an auto-importing directory or don't care about "date added" in your DB
+sleepBeforeMove=0
+#
+#############################################
+###    TODO
+#############################################
+#
+# SSHFS and Fuse don't currently work on WSL becuase M$FT = poop emoji.
+# If you're on Ubuntu or any other proper linux implementation, switch this to true
+# useSSHFs=false
+#
+# Long term TODO make sure this doesn't need to be declared by just automatically mounting all the time, whenever WSL supports FUSE
+# MAKE SURE TO HAVE THE TRAILING / AFTER YOUR LOCAL DIRECTORIES
+# path to local direcotry where the above directory will be accessible via
+#localMountDir=/mnt/z/rtorrent/downloads/PTH/Seed
+
+#############################################
+###    debugging options
+#############################################
+
+#Pauses function every time a major block is finished.
+debugSTEPPING=false
+# Prints some values of variables and expanded functions
+debugVERBOSE=false
+# If you don't want to do any file manipulation
+debugDRYRUN=false

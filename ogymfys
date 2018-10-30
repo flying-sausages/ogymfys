@@ -1,0 +1,341 @@
+#!/bin/bash
+
+
+##########################################################################################
+##########################################################################################
+###
+###  This code will pull down all music newer than the oldest folder in your backup
+###  from a remote seedbox or a server, and process the FLACs the way you want.
+###  The processed files will be moved to a directory and copied to the backup location.
+###
+##########################################################################################
+##########################################################################################
+
+
+#############################################
+###    Dependencies
+#############################################
+
+# Please install ffmpeg, parallel, rsync
+
+#############################################
+###    Functions
+#############################################
+# Asks you if you want to continue the script after every major step
+debugSTEPPING=false
+# Prints some values of variables and expanded functions
+debugVERBOSE=true
+# If you don't want to do any file manipulation
+debugDRYRUN=false
+
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+debugEcho () {
+	echo -e "${RED}D${YELLOW}ECHO${NC}" "$@" 
+}
+
+debugFunc () {
+	if $debugVERBOSE; then
+		echo -e "${RED}DEBUG${NC}" "$@"
+		echo -e "${RED}╚═══▷${NC}" $(eval "$@")
+	fi
+}
+
+debugVar () {
+    if $debugVERBOSE; then
+        echo -e "${RED}DEBUG${NC}" "$1"
+        echo -e "${RED}╚═══▷${NC}" $(declare -p $1) "\n"
+    fi
+}
+
+debugStep () {
+	if $debugSTEPPING; then
+		echo -e "${RED}DEBUG${CYAN}" $1" ${NC}| Continue? (y/N)"
+	    read choice
+	    case $choice in
+	        [Yy]* ) echo -e "${RED}╚═══▷${GREEN} continuing${NC}";;
+	        [Nn]* ) echo -e "${RED}╚═══▷ exiting${NC}"; exit;;
+	        * ) echo -e "${RED}╚═══▷ exiting${NC}"; exit;;
+        esac
+	fi
+}
+
+checkDir () {
+	if [ ! -d  $1 ]; then
+		echo "The directory" "$1" "does not exist. Please check ~/.omgymfys/config"
+		fatalError=true
+	fi
+}
+
+checkDeps () {
+	if [ "$(which $1)" = "" ] ;then
+		echo "This script requires $1, and that has not been found in the path. Please make sure it is installed and visible from your path."
+		fatalError=true
+	fi
+}
+
+#This makes it so that whenever you press CTRL+C, the function gets called.
+trap ctrl_c INT
+function ctrl_c() {
+        echo -e "   ${RED}SCRIPT INTERRUPTED${NC}"
+        exit 1
+}
+
+#############################################
+###    Verifications
+#############################################
+
+if [ ! -f  ~/.ogymfys/config ]; then
+	#There's no config
+	echo "There is no file at ~/.ogymfys/config, we'll copy a template there for ya."
+	DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
+	if [ ! -d ~/.ogymfys/ ]; then
+		mkdir -p ~/.ogymfys/
+	fi
+	cp "$DIR/config.default" ~/.ogymfys/config
+	echo "Please edit the file with your editor of choice and run the script again."
+	exit 
+fi
+source ~/.ogymfys/config
+
+
+fatalError=false
+
+#check if local folders exist
+debugVar localBackupDir
+
+checkDir $localBackupDir
+# checkDir $localTempDir
+debugVar localDestDir
+checkDir $localDestDir
+# TODO When SSHFS works on WSL, get rid of this check as we'll be actually executing this step.
+#checkDir $localMountDir
+
+#check if all dependencies are installed
+checkDeps ffmpeg
+checkDeps parallel
+#checkDeps sshfs
+checkDeps rsync
+
+if $fatalError ; then
+	echo "EXITING"
+	exit 1
+fi
+
+# if [ "$(ls -A $localMountDir)" ]; then    
+# 	sleep 0
+# else
+#     echo "$localMountDir is empty, so there's nothing to sync. Is everything mounted right?"
+#     fatalError=true
+# fi
+
+# If we found some bad problems, quit
+if $fatalError ; then
+	echo "EXITING"
+	exit 1
+fi
+
+#TODO can ffmpeg run more threads at the same time than cores?
+#checking if the user didn't ask for more cores than the system has
+availableThreads=`cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l`
+
+debugVar availableThreads
+debugVar threadsToUse
+
+#If the machine has less threads than user wanted, use max.
+if [ "$availableThreads" -lt "$threadsToUse" ];
+then
+	echo "You only have "$availableThreads" available CPU threads, which is more than what you asked for. We will therefore use all available."
+	threadsToUse=$availableThreads
+fi
+
+####### BIG ASS TODO RIGHT HERE
+
+# #when using SSHFS, check that the directory is mounted using sshfs and do so if necessary
+# if $useSSHFs; then
+# 	if [ "$(stat --file-system --format=%T $localMountDir )" != "fuse.sshfs" ]
+# 	then
+# 		debugFunc stat --file-system --format=%T $localMountDir
+# 		echo "##### "$localMountDir" is not sshfs mounted"
+# 		echo "SSHFs needs sudo to mount directories, please provide that now. ^C to cancel"
+# 		#We alredy know the local mount dir exists as the script would have failed otherwise
+# 		sudo sshfs "$remoteHost":"$remoteMusicDir" "$localMountDir"
+# 		# TODO check if the mount was succesful
+# 	fi
+# fi
+
+debugStep "All dependencies are fine, continue?"
+
+
+#If the temp locations don't exist, make sure to create them
+debugFunc checkDir $localTempDir
+debugFunc checkDir $localTempDir/ready
+debugFunc checkDir $localTempDir/queue
+if [ ! -d "$localTempDir" ]; then mkdir -p "$localTempDir"; fi
+if [ ! -d "$localTempDir"/ready ]; then mkdir "$localTempDir"/ready; fi
+if [ ! -d "$localTempDir"/queue ]; then	mkdir "$localTempDir"/queue; fi
+
+debugStep "Temporary directories made"
+
+#############################################
+###    Downloading
+#############################################
+
+
+#If the folder is known to be empty, use the manual date instead
+if $isBackupEmpty ; then
+	lastDateDirty=$dateToSyncFrom
+else
+	lastDateDirty=`stat -c "%x" $localBackupDir/* | sort |tail -n 1 | cut -f1 -d"."`
+	debugFunc 'stat -c "%x" "$localBackupDir"/* | sort |tail -n 1 | cut -f1 -d"."'
+fi
+
+#Format the date for the find command
+lastDate=`date -d"$lastDateDirty" +%Y-%m-%dT%H:%M:%S`
+debugVar lastDate
+
+debugStep "Formatted the date"
+
+#### TODO use parallel and PV
+# Download all files newer than that to temp/queue dir
+echo "Downloading files newer than $lastDateDirty"
+echo "Connecting to remote host $remoteHost"
+
+# Get remote machine to give us the list of directories to sync
+remoteQueueList=$(ssh $remoteHost find $remoteMusicDir -newermt $lastDate -type d -print -mindepth 1 -maxdepth 1)
+#Exit if there is nothing to sync
+if [ -z "$remoteQueueList"]; then
+	echo "There are no new folders in this directory since the last time you backed up."
+	echo "Check the date and cross-reference the folders if you believe this is an error."
+	exit
+fi
+
+echo "Found "$(echo "$remoteQueueList" |wc -l)" directories to download"
+
+counter=1
+qtyQueue=$(echo "$remoteQueueList" |wc -l)
+
+if $debugDRYRUN; then
+	debugEcho "Would be downloading the following directories:"
+	echo "$remoteQueueList"
+else
+	# DEBUGGING DESTINATION
+	# TDOD change debug to backup folder
+	destDir="$localTempDir"/queue
+	while IFS= read -r currentDir ; do
+		echo -e "[$counter/$qtyQueue] ${GREEN}Downloading: $(basename "$currentDir")${NC}"
+		currentDir=$(printf %q "$currentDir")
+		rsyncString=$(echo "$remoteHost":"'""$currentDir""'" "'""$destDir""'")
+		debugVar rsyncString
+		## TODO find out why I need to pass this through eval to work
+		# lmao wtf :shrug:
+		printf "${CYAN}  Progress:"
+		eval rsync "$rsyncString" -r --info=progress2 --bwlimit=$rsyncSpeedLimit --size-only
+		printf "${NC}\n"
+		((counter++))
+	done <<< "$remoteQueueList"
+fi
+echo -e "${GREEN}Downloaded all files${NC}"
+debugStep "Downloaded the files"
+
+
+#############################################
+###    Audio processing
+#############################################
+
+###### WE ARE NOT GOING TO PROCESS MP3s IN ANY WAY
+# Copy all mp3s to temp/ready
+listMP3Queue=`find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq`
+echo "There are "$(echo "$listMP3Queue"| wc -l)" MP3 Folders, moving them to the ready state"
+if [ "$listMP3Queue" = ""]; then
+	echo "Actually there are no MP3 folders so how about not"
+else
+	#For each folder in the MP3 Queue
+	while IFS= read -r currentDir ; do
+		debugVar currentDir
+		newDir="$localTempDir/ready/"$(basename "$currentDir")
+		debugVar newDir
+		#Move it to the ready state
+		cp -r "$currentDir" "$newDir" # TODO add clauses for no backup option to just do mv instead
+	done <<< "$listMP3Queue"
+fi
+
+#Get all folders with flacs in them
+listFLACList=`find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' |sort |uniq;echo ""`
+
+#Doing loops with empty IFS fucks with ffmpeg for some reason
+listFLACQueue=()
+while IFS= read -r currentDir ; do
+	# echo " $currentDir boooop"
+    listFLACQueue+=("$currentDir")
+done < <(printf '%s\n' "$listFLACList")
+
+echo "There are ${#listFLACQueue[@]} Flac folders."
+
+# exit
+# Transcode all flacs to temp/ready
+if $transcodeFlac ; then
+	counter=1
+
+	debugEcho "We in the MF Flac house bitch"
+	for currentDir in "${listFLACQueue[@]}" ;do  
+		echo -e "[$counter/${#listFLACQueue[@]}] ${GREEN}Transcoding: $(basename "$currentDir")${NC}"
+		newDir="$localTempDir/ready/"$(basename "$currentDir")
+		debugVar newDir
+		if [ -d  "$newDir" ]; then
+			echo "The directory already exists in the ready folder, removing previous files."
+			rm -rf "$newDir"
+		fi
+			mkdir "$newDir"
+			debugFunc ls -lah "$newDir"
+			parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions"  "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac
+			echo -e "${GREEN}Done!${NC}"
+		((counter++))
+	done
+else #If we're not transcoding flacs...
+	#for each flac folder, copy the folder to the ready queue
+	echo "Moving FLAC folders straight to the ready queue"
+	while IFS= read -r currentDir ; do
+		debugVar currentDir
+		newDir="$localTempDir/ready/$(basename "$currentDir")"
+		debugVar newDir
+		cp -r "$currentDir" "$newDir" # TODO add clauses for no backup option to just do mv instead
+	done <<< "$listFLACQueue"
+fi
+
+echo "All files in the queue have been processed."
+
+# exit
+
+#############################################
+###    File management
+#############################################
+
+debugStep"About to move ready queue to the destination"
+# Move all new ready media to destination
+for folder in $localTempDir/ready/*
+do
+  mv "$folder" "$localDestDir/"
+  echo "Moved "$(basename "$folder")" to destination"
+  sleep $sleepBeforeMove
+  rm -rf "$folder"
+done
+
+#move all downloaded files to backup
+if $keepBackupsOfData; then
+	mv "$localTempDir/queue/*" "$localBackupDir"
+else
+	rm -rf "$localTempDir"/queue/*
+fi
+
+#Delete everything, just in case
+# rm -rf "$localTempDir"/queue/*
+
+echo ""
+echo "Done! "$(echo "$listFLACQueue"| wc -l)" MP3 folders and "$(echo "$listFLACQueue"| wc -l)" Flac folders processed and/or moved to the destination directory"
+
