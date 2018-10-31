@@ -247,7 +247,7 @@ debugStep "Downloaded the files"
 # Copy all mp3s to temp/ready
 listMP3Queue=`find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq`
 echo "There are "$(echo "$listMP3Queue"| wc -l)" MP3 Folders, moving them to the ready state"
-if [ "$listMP3Queue" = ""]; then
+if [ "$listMP3Queue" == ""]; then
 	echo "Actually there are no MP3 folders so how about not"
 else
 	#For each folder in the MP3 Queue
@@ -280,6 +280,7 @@ if $transcodeFlac ; then
 	debugEcho "We in the MF Flac house bitch"
 	for currentDir in "${listFLACQueue[@]}" ;do  
 		echo -e "[$counter/${#listFLACQueue[@]}] ${GREEN}Transcoding: $(basename "$currentDir")${NC}"
+		# TODO Handle folders with sub-folders
 		newDir="$localTempDir/ready/"$(basename "$currentDir")
 		debugVar newDir
 		if [ -d  "$newDir" ]; then
@@ -311,7 +312,7 @@ echo "All files in the queue have been processed."
 ###    File management
 #############################################
 
-debugStep"About to move ready queue to the destination"
+debugStep "About to move ready queue to the destination"
 # Move all new ready media to destination
 for folder in $localTempDir/ready/*
 do
