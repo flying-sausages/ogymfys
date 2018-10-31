@@ -21,13 +21,6 @@
 #############################################
 ###    Functions
 #############################################
-# Asks you if you want to continue the script after every major step
-debugSTEPPING=false
-# Prints some values of variables and expanded functions
-debugVERBOSE=true
-# If you don't want to do any file manipulation
-debugDRYRUN=false
-
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,7 +29,9 @@ YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
 debugEcho () {
-	echo -e "${RED}D${YELLOW}ECHO${NC}" "$@" 
+	if $debugVERBOSE; then
+	echo -e "${RED}D${YELLOW}ECHO${NC}" "$@"
+	fi
 }
 
 debugFunc () {
