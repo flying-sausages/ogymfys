@@ -204,7 +204,7 @@ echo "Connecting to remote host $remoteHost"
 # Get remote machine to give us the list of directories to sync
 remoteQueueList=$(ssh $remoteHost find $remoteMusicDir -newermt $lastDate -type d -print -mindepth 1 -maxdepth 1)
 #Exit if there is nothing to sync
-if [ -z "$remoteQueueList"]; then
+if [ "$remoteQueueList" == "" ]; then
 	echo "There are no new folders in this directory since the last time you backed up."
 	echo "Check the date and cross-reference the folders if you believe this is an error."
 	exit
@@ -247,7 +247,7 @@ debugStep "Downloaded the files"
 # Copy all mp3s to temp/ready
 listMP3Queue=`find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq`
 echo "There are "$(echo "$listMP3Queue"| wc -l)" MP3 Folders, moving them to the ready state"
-if [ "$listMP3Queue" == ""]; then
+if [ "$listMP3Queue" == "" ]; then
 	echo "Actually there are no MP3 folders so how about not"
 else
 	#For each folder in the MP3 Queue
@@ -278,21 +278,27 @@ if $transcodeFlac ; then
 	counter=1
 
 	debugEcho "We in the MF Flac house bitch"
-	for currentDir in "${listFLACQueue[@]}" ;do  
-		echo -e "[$counter/${#listFLACQueue[@]}] ${GREEN}Transcoding: $(basename "$currentDir")${NC}"
-		# TODO Handle folders with sub-folders
-		newDir="$localTempDir/ready/"$(basename "$currentDir")
-		debugVar newDir
-		if [ -d  "$newDir" ]; then
-			echo "The directory already exists in the ready folder, removing previous files."
-			rm -rf "$newDir"
-		fi
+	debugVar listFLACList
+	debugVar listFLACQueue
+	if [ "$listFLACList" == "" ]; then
+		echo "Flac list is actually empty"
+	else
+		for currentDir in "${listFLACQueue[@]}" ;do
+			echo -e "[$counter/${#listFLACQueue[@]}] ${GREEN}Transcoding: $(basename "$currentDir")${NC}"
+			# TODO Handle folders with sub-folders
+			newDir="$localTempDir/ready/"$(basename "$currentDir")
+			debugVar newDir
+			if [ -d  "$newDir" ]; then
+				echo "The directory already exists in the ready folder, removing previous files."
+				rm -rf "$newDir"
+			fi
 			mkdir "$newDir"
 			debugFunc ls -lah "$newDir"
 			parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions"  "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac
 			echo -e "${GREEN}Done!${NC}"
-		((counter++))
-	done
+			((counter++))
+		done
+	fi
 else #If we're not transcoding flacs...
 	#for each flac folder, copy the folder to the ready queue
 	echo "Moving FLAC folders straight to the ready queue"
@@ -314,17 +320,32 @@ echo "All files in the queue have been processed."
 
 debugStep "About to move ready queue to the destination"
 # Move all new ready media to destination
+debugEcho "Starting the ready move to Destination"
 for folder in $localTempDir/ready/*
 do
+  debugVar folder
   mv "$folder" "$localDestDir/"
   echo "Moved "$(basename "$folder")" to destination"
   sleep $sleepBeforeMove
   rm -rf "$folder"
 done
+debugEcho "Finished ready to destination"
 
+
+debugStep "About to move queue to backups"
 #move all downloaded files to backup
 if $keepBackupsOfData; then
-	mv "$localTempDir/queue/*" "$localBackupDir"
+	# Move all new ready media to destination
+##	for folder in $localTempDir/queue/*
+#	do
+#	  mv "$folder" "$localBackupDir/"
+#	  #echo "Moved "$(basename "$folder")" to destination"
+#	  #sleep $sleepBeforeMove
+#	  rm -rf "$folder"
+#	done
+	debugEcho "$localTempDir"/queue/*
+	debugFunc echo "$localTempDir"/queue/*
+	mv -t "$localBackupDir" "$localTempDir"/queue/*
 else
 	rm -rf "$localTempDir"/queue/*
 fi
@@ -333,5 +354,5 @@ fi
 # rm -rf "$localTempDir"/queue/*
 
 echo ""
-echo "Done! "$(echo "$listFLACQueue"| wc -l)" MP3 folders and "$(echo "$listFLACQueue"| wc -l)" Flac folders processed and/or moved to the destination directory"
+echo "Done! "# $(echo "$listFLACQueue"| wc -l)" MP3 folders and "$(echo "$listFLACQueue"| wc -l)" Flac folders processed and/or moved to the destination directory"
 
