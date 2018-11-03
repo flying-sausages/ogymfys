@@ -1,91 +1,112 @@
 #!/bin/bash
-#
+
+#############################################
+###    GENERAL TIPS
+#############################################
+
+# Add an alias to your .bashrc, .zshrc or equivalent to make this script easier to trigger
+# e.g. alias ogymfys="/path/to/ogymfys/
+
+# Add this script to your crone after you've made sure it works for you how you want and always have your music pulled down on its own!
+# Works like a charm for iTunes with Apple Music/iTunes Match (25$/yr?), which can auto-import from the destination folder, and instantly upload a 256kbps version accessible from your devices.
+
+# USE A KEY-BASED, PASSWORD-LESS SSH AUTH TO THE SERVER
+# While I will try to update this code later with SSHFs support to go aroudn this, you will be asked for a password for every folder you want to have pulled down due to rsync being called for every folder.
+
+# For the rsyncSpeedLimit, in the case you're not the only netowrk user, I'd suggest leaving at least 200KB/s for the others, ha!
+
+# If you can't figure out what's going wrong, turn on some debugging options before hittimg me up please!
+# Include the full, CENSORED AND MANUALLY ANONYMISED output in a github issue/PM to me.
+
 #############################################
 ###    Connection
 #############################################
-#
+
 # define a hostname in your .ssh/config. use key-based authentication.
-# You could also define this to be "user@host -p PORT", but you'll have to insert your password a couple times
+# You could also define this to be "user@host -p PORT -i /path/to/key", but you'll have to insert your password a gooooood couple times if wither requires a password
 remoteHost="seedbox"
 # path to remote directory that will be locally mounted via sshfs
 # if sshfs is not being used, this will be the directory that will
 # Use a full path
-remoteMusicDir="/home/user/rtorrent/downloads/RED/"
-# Maximum transfer speed in KB/s, would highly suggest leaving yourself at least 200KB/s of the max you can get so you don't choke your network on longer transfers
-# Remember, 1KB/s = 8kbps. 
-rsyncSpeedLimit=59000
-#
-#
+remoteMusicDir="/home/user/rtorrent/downloads/"
+# Maximum transfer speed in KB/s.
+# Remember, 1KB/s = 8kbps. This would limit the download to 50MB/s, for example.
+rsyncSpeedLimit=50000
+
+
 #############################################
 ###    Local Folders & Backups
 #############################################
-#
-#
-#path where folders for queues will be created.
-#This directory will be made for you in case it doesn't exist
-localTempDir=/mnt/c/tmp/ogymfys
-#path where the folders with processed media will go
+
+# path where folders for queues will be created.
+# This directory will be made for you in case it doesn't exist
+localTempDir=/tmp/ogymfys
+# path where the folders with processed media will go
 localDestDir=~/music/destination/
-#
-#If you still want to keep a copy of the original data on the disk, set this to true.
-#Setting this to false will delete all the downloaded version of the data and not keep a local backup
+
+# If you still want to keep a copy of the original data on the disk, set this to true.
+# Setting this to false will delete all the downloaded version of the data and not keep a local backup
 keepBackupsOfData=true
-#Path which is checked for the last time data has been downloaded and backed up.
-#The downloaded copies of files will be downloaded to this directory
-#MAKE SURE THAT THE PATH IS PROPERLY POSIX ESCAPED
+# Path which is checked for the last time data has been downloaded and backed up.
+# The downloaded copies of files will be downloaded to this directory
+# MAKE SURE THAT THE PATH IS PROPERLY POSIX ESCAPED
 localBackupDir=~/music/RED-backup
-#
+
 # Change this to true if you have nothing in the download folder yet.
 # Once you have something there, change it back to false
 # This is necessary as we compare the last time something was added 
 isBackupEmpty=false
 # Date which to sync from in the event the backup folder is empty
 dateToSyncFrom="Jan 1 1970 12:45"
-#
-#
+
+
 #############################################
 ###    Transcoding flac options
 #############################################
-#
-#Use false if you don't want to process FLACs
+
+# Use false if you don't want to process FLACs
 transcodeFlac=true
-#arguments to pass to ffmpeg for flac processing
-#This argument can be left empty most of the time, unless you know what you need.
-#For conversion to ALAC use "-acodec alac"
+# Arguments to pass to ffmpeg for flac processing
+# This argument can be left empty most of the time, unless you know what you need.
+# For conversion to ALAC use "-acodec alac"
 ffmpegFlacOptions="-acodec alac"
-#For conversion to ALAC use ".m4a"
-#For conversion to AIFF use ".aif"
-#MAKE SURE TO INCLUDE THE DOT
+# For conversion to ALAC use ".m4a"
+# For conversion to AIFF use ".aif"
+# MAKE SURE TO INCLUDE THE DOT
 ffmpegFlacNewExtension=".m4a"
-#
+
+
 #############################################
 ###    Technical limitations
 #############################################
-#
+
 # The amount of parallel processes you want to run at the same time
 threadsToUse=4
-## Integer, number of seconds to wait before moving a folder to the destination
-# Use 0 if you're not using an auto-importing directory or don't care about "date added" in your DB
+# Number of seconds to wait before moving a folder to the destination
+# For example, some people care for having albums together when sorting their libraries by date added,
+# which could confuse software which auto-imports from the destination directory
 sleepBeforeMove=0
-#
+
+
 #############################################
 ###    TODO
 #############################################
-#
+
 # SSHFS and Fuse don't currently work on WSL becuase M$FT = poop emoji.
 # If you're on Ubuntu or any other proper linux implementation, switch this to true
-# useSSHFs=false
-#
+#useSSHFs=false
+
 # Long term TODO make sure this doesn't need to be declared by just automatically mounting all the time, whenever WSL supports FUSE
 # MAKE SURE TO HAVE THE TRAILING / AFTER YOUR LOCAL DIRECTORIES
 # path to local direcotry where the above directory will be accessible via
 #localMountDir=/mnt/z/rtorrent/downloads/PTH/Seed
 
+
 #############################################
-###    debugging options
+###    Debugging options
 #############################################
 
-#Pauses function every time a major block is finished.
+# Pauses function every time a major block is finished.
 debugSTEPPING=false
 # Prints some values of variables and expanded functions
 debugVERBOSE=false

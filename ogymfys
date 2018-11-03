@@ -203,14 +203,17 @@ echo "Connecting to remote host $remoteHost"
 
 # Get remote machine to give us the list of directories to sync
 remoteQueueList=$(ssh $remoteHost find $remoteMusicDir -newermt $lastDate -type d -print -mindepth 1 -maxdepth 1)
-#Exit if there is nothing to sync
+
+#Exit if there is nothing to sync or the connection didn't work
 if [ "$remoteQueueList" == "" ]; then
 	echo "There are no new folders in this directory since the last time you backed up."
 	echo "Check the date and cross-reference the folders if you believe this is an error."
+	echo "If you got an error from SSH above, disregard this and check that first instead.""
 	exit
 fi
 
 echo "Found "$(echo "$remoteQueueList" |wc -l)" directories to download"
+exit
 
 counter=1
 qtyQueue=$(echo "$remoteQueueList" |wc -l)
