@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 ##########################################################################################
 ##########################################################################################
 ###
@@ -16,7 +15,11 @@
 ###    Dependencies
 #############################################
 
+
+
 # Please install ffmpeg, parallel, rsync
+
+
 
 #############################################
 ###    Functions
@@ -96,6 +99,7 @@ if [ ! -f  ~/.ogymfys/config ]; then
 	echo "Please edit the file with your editor of choice and run the script again."
 	exit 
 fi
+# shellcheck source=../.ogymfys/config
 source ~/.ogymfys/config
 
 
@@ -212,7 +216,7 @@ if [ "$remoteQueueList" == "" ]; then
 	exit
 fi
 
-echo "Found "$(echo "$remoteQueueList" |wc -l)" directories to download"
+echo "Found $(echo "$remoteQueueList" |wc -l) directories to download"
 
 counter=1
 qtyQueue=$(echo "$remoteQueueList" |wc -l)
@@ -248,11 +252,12 @@ debugStep "Downloaded the files"
 ###### WE ARE NOT GOING TO PROCESS MP3s IN ANY WAY
 # Copy all mp3s to temp/ready
 listMP3Queue=`find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq`
-echo "There are "$(echo "$listMP3Queue"| wc -l)" MP3 Folders, moving them to the ready state"
+
 if [ "$listMP3Queue" == "" ]; then
-	echo "Actually there are no MP3 folders so how about not"
+	echo "There are no folders with MP3s."
 else
 	#For each folder in the MP3 Queue
+	echo "There are $(echo "$listMP3Queue"| wc -l) MP3 Folders, moving them to the ready state"
 	while IFS= read -r currentDir ; do
 		debugVar currentDir
 		newDir="$localTempDir/ready/"$(basename "$currentDir")
@@ -265,16 +270,15 @@ fi
 #Get all folders with flacs in them
 listFLACList=`find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' |sort |uniq;echo ""`
 
-#Doing loops with empty IFS fucks with ffmpeg for some reason
+#Doing loops with empty IFS fucks with ffmpeg for some reason, probaby becuase of the fact things are being read from stdin?
+#Converting newline separated list to an array
 listFLACQueue=()
 while IFS= read -r currentDir ; do
 	# echo " $currentDir boooop"
     listFLACQueue+=("$currentDir")
 done < <(printf '%s\n' "$listFLACList")
 
-echo "There are ${#listFLACQueue[@]} Flac folders."
 
-# exit
 # Transcode all flacs to temp/ready
 if $transcodeFlac ; then
 	counter=1
@@ -283,15 +287,16 @@ if $transcodeFlac ; then
 	debugVar listFLACList
 	debugVar listFLACQueue
 	if [ "$listFLACList" == "" ]; then
-		echo "Flac list is actually empty"
+		echo "There are no folders containing FLACs"
 	else
+		echo "There are ${#listFLACQueue[@]} folders containing FLACs."
 		for currentDir in "${listFLACQueue[@]}" ;do
 			echo -e "[$counter/${#listFLACQueue[@]}] ${GREEN}Transcoding: $(basename "$currentDir")${NC}"
 			# TODO Handle folders with sub-folders
 			newDir="$localTempDir/ready/"$(basename "$currentDir")
 			debugVar newDir
 			if [ -d  "$newDir" ]; then
-				echo "The directory already exists in the ready folder, removing previous files."
+				echo "The directory $newDir already exists, removing previous files."
 				rm -rf "$newDir"
 			fi
 			mkdir "$newDir"
@@ -355,4 +360,4 @@ fi
 #Delete everything, just in case
 # rm -rf "$localTempDir"/queue/*
 
-echo "Done!  $(echo $listFLACQueue| wc -l) MP3 folders and $(echo $listFLACQueue| wc -l) Flac folders processed and/or moved to the destination directory"
+echo "Done! ${#listMP3Queue[@]} MP3 folders and ${#listFLACQueue[@]} FLAC folders processed and/or moved to the destination directory"
