@@ -47,13 +47,13 @@ debugFunc () {
 debugVar () {
     if $debugVERBOSE; then
         echo -e "${RED}DEBUG${NC}" "$1"
-        echo -e "${RED}╚═══▷${NC}" $(declare -p $1) "\n"
+        echo -e "${RED}╚═══▷${NC} $(declare -p $1)"
     fi
 }
 
 debugStep () {
 	if $debugSTEPPING; then
-		echo -e "${RED}DEBUG${CYAN}" $1" ${NC}| Continue? (y/N)"
+		echo -e "${RED}DEBUG${CYAN}$1 ${NC}| Continue? (y/N)"
 	    read choice
 	    case $choice in
 	        [Yy]* ) echo -e "${RED}╚═══▷${GREEN} continuing${NC}";;
@@ -65,7 +65,7 @@ debugStep () {
 
 checkDir () {
 	if [ ! -d  "$1" ]; then
-		echo "The directory" "$1" "does not exist. Please check ~/.omgymfys/config"
+		echo "The directory $1 does not exist. Please check ~/.omgymfys/config"
 		fatalError=true
 	fi
 }
@@ -141,7 +141,7 @@ fi
 
 #TODO can ffmpeg run more threads at the same time than cores?
 #checking if the user didn't ask for more cores than the system has
-availableThreads=`cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l`
+availableThreads=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l)
 
 debugVar availableThreads
 debugVar threadsToUse
@@ -149,7 +149,7 @@ debugVar threadsToUse
 #If the machine has less threads than user wanted, use max.
 if [ "$availableThreads" -lt "$threadsToUse" ];
 then
-	echo "You only have "$availableThreads" available CPU threads, which is more than what you asked for. We will therefore use all available."
+	echo "You only have $availableThreads available CPU threads, which is more than what you asked for. We will therefore use all available."
 	threadsToUse=$availableThreads
 fi
 
@@ -190,12 +190,12 @@ debugStep "Temporary directories made"
 if $isBackupEmpty ; then
 	lastDateDirty=$dateToSyncFrom
 else
-	lastDateDirty=`stat -c "%x" $localBackupDir/* | sort |tail -n 1 | cut -f1 -d"."`
+	lastDateDirty=$(stat -c "%x" $localBackupDir/* | sort |tail -n 1 | cut -f1 -d".")
 	debugFunc 'stat -c "%x" "$localBackupDir"/* | sort |tail -n 1 | cut -f1 -d"."'
 fi
 
 #Format the date for the find command
-lastDate=`date -d"$lastDateDirty" +%Y-%m-%dT%H:%M:%S`
+lastDate=$(date -d"$lastDateDirty" +%Y-%m-%dT%H:%M:%S)
 debugVar lastDate
 
 debugStep "Formatted the date"
@@ -251,7 +251,7 @@ debugStep "Downloaded the files"
 
 ###### WE ARE NOT GOING TO PROCESS MP3s IN ANY WAY
 # Copy all mp3s to temp/ready
-listMP3Queue=`find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq`
+listMP3Queue=$(find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq)
 
 if [ "$listMP3Queue" == "" ]; then
 	echo "There are no folders with MP3s."
@@ -268,7 +268,7 @@ else
 fi
 
 #Get all folders with flacs in them
-listFLACList=`find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' |sort |uniq;echo ""`
+listFLACList=$(find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' |sort |uniq;echo "")
 
 #Doing loops with empty IFS fucks with ffmpeg for some reason, probaby becuase of the fact things are being read from stdin?
 #Converting newline separated list to an array
