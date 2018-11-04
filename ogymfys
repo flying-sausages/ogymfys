@@ -61,14 +61,14 @@ debugStep () {
 }
 
 checkDir () {
-	if [ ! -d  $1 ]; then
+	if [ ! -d  "$1" ]; then
 		echo "The directory" "$1" "does not exist. Please check ~/.omgymfys/config"
 		fatalError=true
 	fi
 }
 
 checkDeps () {
-	if [ "$(which $1)" = "" ] ;then
+	if [ "$(command -v $1)" = "" ] ;then
 		echo "This script requires $1, and that has not been found in the path. Please make sure it is installed and visible from your path."
 		fatalError=true
 	fi
@@ -202,18 +202,17 @@ echo "Downloading files newer than $lastDateDirty"
 echo "Connecting to remote host $remoteHost"
 
 # Get remote machine to give us the list of directories to sync
-remoteQueueList=$(ssh $remoteHost find $remoteMusicDir -newermt $lastDate -type d -print -mindepth 1 -maxdepth 1)
+remoteQueueList=$(ssh $remoteHost find "$remoteMusicDir" -newermt $lastDate -type d -print -mindepth 1 -maxdepth 1)
 
 #Exit if there is nothing to sync or the connection didn't work
 if [ "$remoteQueueList" == "" ]; then
 	echo "There are no new folders in this directory since the last time you backed up."
 	echo "Check the date and cross-reference the folders if you believe this is an error."
-	echo "If you got an error from SSH above, disregard this and check that first instead.""
+	echo "If you got an error from SSH above, disregard this and check that first instead."
 	exit
 fi
 
 echo "Found "$(echo "$remoteQueueList" |wc -l)" directories to download"
-exit
 
 counter=1
 qtyQueue=$(echo "$remoteQueueList" |wc -l)
@@ -324,7 +323,7 @@ echo "All files in the queue have been processed."
 debugStep "About to move ready queue to the destination"
 # Move all new ready media to destination
 debugEcho "Starting the ready move to Destination"
-for folder in $localTempDir/ready/*
+for folder in "$localTempDir"/ready/*
 do
   debugVar folder
   mv "$folder" "$localDestDir/"
@@ -356,6 +355,4 @@ fi
 #Delete everything, just in case
 # rm -rf "$localTempDir"/queue/*
 
-echo ""
-echo "Done! "# $(echo "$listFLACQueue"| wc -l)" MP3 folders and "$(echo "$listFLACQueue"| wc -l)" Flac folders processed and/or moved to the destination directory"
-
+echo "Done!  $(echo $listFLACQueue| wc -l) MP3 folders and $(echo $listFLACQueue| wc -l) Flac folders processed and/or moved to the destination directory"
