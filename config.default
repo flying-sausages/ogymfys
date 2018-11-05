@@ -33,6 +33,21 @@ remoteMusicDir="/home/user/rtorrent/downloads/"
 # Remember, 1KB/s = 8kbps. This would limit the download to 50MB/s, for example.
 rsyncSpeedLimit=50000
 
+	######################################
+	###    With SSHFS
+	######################################
+
+# SSHFS and Fuse don't currently work on WSL becuase M$FT = poop emoji.
+# If you're on Ubuntu or any other proper linux implementation, switch this to true
+useSSHFs=false
+
+# Long term TODO make sure this doesn't need to be declared by just automatically mounting all the time, whenever WSL supports FUSE
+# MAKE SURE TO HAVE THE TRAILING / AFTER YOUR LOCAL DIRECTORIES
+# path to local direcotry where the above directory will be accessible via
+localMountDir=/mnt/z/rtorrent/downloads/PTH/Seed
+
+
+
 
 #############################################
 ###    Local Folders & Backups
@@ -91,16 +106,6 @@ sleepBeforeMove=0
 #############################################
 ###    TODO
 #############################################
-
-# SSHFS and Fuse don't currently work on WSL becuase M$FT = poop emoji.
-# If you're on Ubuntu or any other proper linux implementation, switch this to true
-#useSSHFs=false
-
-# Long term TODO make sure this doesn't need to be declared by just automatically mounting all the time, whenever WSL supports FUSE
-# MAKE SURE TO HAVE THE TRAILING / AFTER YOUR LOCAL DIRECTORIES
-# path to local direcotry where the above directory will be accessible via
-#localMountDir=/mnt/z/rtorrent/downloads/PTH/Seed
-
 
 #############################################
 ###    Debugging options
