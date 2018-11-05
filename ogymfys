@@ -99,6 +99,13 @@ if [ ! -f  ~/.ogymfys/config ]; then
 	echo "Please edit the file with your editor of choice and run the script again."
 	exit 
 fi
+
+#GTFO root
+if [[ $EUID -eq 0 ]]; then
+    error "This script should not be run using sudo or as the root user"
+    exit 1
+fi
+
 # shellcheck source=../.ogymfys/config
 source ~/.ogymfys/config
 
@@ -118,20 +125,10 @@ checkDir $localDestDir
 #check if all dependencies are installed
 checkDeps ffmpeg
 checkDeps parallel
-#checkDeps sshfs
-checkDeps rsync
-
-if $fatalError ; then
-	echo "EXITING"
-	exit 1
+if $useSSHFs; then
+	checkDeps sshfs
 fi
-
-# if [ "$(ls -A $localMountDir)" ]; then    
-# 	sleep 0
-# else
-#     echo "$localMountDir is empty, so there's nothing to sync. Is everything mounted right?"
-#     fatalError=true
-# fi
+checkDeps rsync
 
 # If we found some bad problems, quit
 if $fatalError ; then
@@ -139,7 +136,37 @@ if $fatalError ; then
 	exit 1
 fi
 
-#TODO can ffmpeg run more threads at the same time than cores?
+debugStep "All dependencies are fine, continue?"
+
+
+
+#when using SSHFS, check that the directory is mounted using sshfs and do so if necessary
+if $useSSHFs; then
+	if [ "$(stat --file-system --format=%T "$localMountDir" )" != "fuse.sshfs" ]; then
+		debugFunc stat --file-system --format=%T "$localMountDir"
+		echo -e "${RED} $localMountDir is not sshfs mounted${NC}"
+		echo "SSHFs needs sudo to mount directories, please authenticate. ^C to cancel"
+		#We alredy know the local mount dir exists as the script would have failed otherwise
+		if !(sudo sshfs "$remoteHost":"$remoteMusicDir" "$localMountDir"); then
+	 		echo echo -e "${RED}sshfs failed to mount, please investigate.${NC} Check your remoteHost and remoteMusicDir variables in ~/.ogymfys/config "
+	 	fi
+		# TODO check if the mount was succesful
+
+		#Check if the mounted folder has any contents or not. If it don't probably the wrong folder was mounted
+		if [ -z "$(ls -A "$localMountDir")" ]; then
+		    echo "$localMountDir is empty, so there's nothing to sync. Is everything mounted right?"
+		    fatalError=true
+		fi
+
+	fi
+fi
+
+# If we found some bad problems, quit
+if $fatalError ; then
+	echo -e "${RED}Encountered incosistencies, exiting${NC}"
+	exit 1
+fi
+
 #checking if the user didn't ask for more cores than the system has
 availableThreads=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l)
 
@@ -147,29 +174,10 @@ debugVar availableThreads
 debugVar threadsToUse
 
 #If the machine has less threads than user wanted, use max.
-if [ "$availableThreads" -lt "$threadsToUse" ];
-then
+if [ "$availableThreads" -lt "$threadsToUse" ]; then
 	echo "You only have $availableThreads available CPU threads, which is more than what you asked for. We will therefore use all available."
 	threadsToUse=$availableThreads
 fi
-
-####### BIG ASS TODO RIGHT HERE
-
-# #when using SSHFS, check that the directory is mounted using sshfs and do so if necessary
-# if $useSSHFs; then
-# 	if [ "$(stat --file-system --format=%T $localMountDir )" != "fuse.sshfs" ]
-# 	then
-# 		debugFunc stat --file-system --format=%T $localMountDir
-# 		echo "##### "$localMountDir" is not sshfs mounted"
-# 		echo "SSHFs needs sudo to mount directories, please provide that now. ^C to cancel"
-# 		#We alredy know the local mount dir exists as the script would have failed otherwise
-# 		sudo sshfs "$remoteHost":"$remoteMusicDir" "$localMountDir"
-# 		# TODO check if the mount was succesful
-# 	fi
-# fi
-
-debugStep "All dependencies are fine, continue?"
-
 
 #If the temp locations don't exist, make sure to create them
 debugFunc checkDir $localTempDir
@@ -182,12 +190,12 @@ if [ ! -d "$localTempDir"/queue ]; then	mkdir "$localTempDir"/queue; fi
 debugStep "Temporary directories made"
 
 #############################################
-###    Downloading
+###    Date parsing
 #############################################
 
 
 #If the folder is known to be empty, use the manual date instead
-if $isBackupEmpty ; then
+if [ "$isBackupEmpty" == "true" ] ; then
 	lastDateDirty=$dateToSyncFrom
 else
 	lastDateDirty=$(stat -c "%x" $localBackupDir/* | sort |tail -n 1 | cut -f1 -d".")
@@ -200,50 +208,68 @@ debugVar lastDate
 
 debugStep "Formatted the date"
 
-#### TODO use parallel and PV
-# Download all files newer than that to temp/queue dir
+
+
+
+
 echo "Downloading files newer than $lastDateDirty"
-echo "Connecting to remote host $remoteHost"
 
-# Get remote machine to give us the list of directories to sync
-remoteQueueList=$(ssh $remoteHost find "$remoteMusicDir" -newermt $lastDate -type d -print -mindepth 1 -maxdepth 1)
+#############################################
+###    Downloading
+#############################################
 
-#Exit if there is nothing to sync or the connection didn't work
+destDir="$localTempDir"/queue
+
+
+remoteQueueList=""
+if [ "$useSSHFs" == "true" ]; then
+	remoteQueueList=$(find "$localMountDir" -newermt "$lastDate" -type d -print -mindepth 1 -maxdepth 1)
+else
+	echo "Connecting to remote host $remoteHost"
+	# Get remote machine to give us the list of directories to sync
+	remoteQueueList=$(ssh $remoteHost find "$remoteMusicDir" -newermt "$lastDate" -type d -print -mindepth 1 -maxdepth 1)	
+fi
+
 if [ "$remoteQueueList" == "" ]; then
 	echo "There are no new folders in this directory since the last time you backed up."
 	echo "Check the date and cross-reference the folders if you believe this is an error."
-	echo "If you got an error from SSH above, disregard this and check that first instead."
-	exit
+	echo "Please check if you previously got an error with either the SSH or SSHFS connection."
 fi
-
-echo "Found $(echo "$remoteQueueList" |wc -l) directories to download"
-
-counter=1
-qtyQueue=$(echo "$remoteQueueList" |wc -l)
 
 if $debugDRYRUN; then
 	debugEcho "Would be downloading the following directories:"
-	echo "$remoteQueueList"
+	find "$localMountDir" -newermt "$lastDate" -type d -print -mindepth 1 -maxdepth 1
 else
-	# DEBUGGING DESTINATION
-	# TDOD change debug to backup folder
-	destDir="$localTempDir"/queue
-	while IFS= read -r currentDir ; do
-		echo -e "[$counter/$qtyQueue] ${GREEN}Downloading: $(basename "$currentDir")${NC}"
-		currentDir=$(printf %q "$currentDir")
-		rsyncString=$(echo "$remoteHost":"'""$currentDir""'" "'""$destDir""'")
-		debugVar rsyncString
-		## TODO find out why I need to pass this through eval to work
-		# lmao wtf :shrug:
-		printf "${CYAN}  Progress:"
-		eval rsync "$rsyncString" -r --info=progress2 --bwlimit=$rsyncSpeedLimit --size-only
-		printf "${NC}\n"
-		((counter++))
-	done <<< "$remoteQueueList"
-fi
-echo -e "${GREEN}Downloaded all files${NC}"
-debugStep "Downloaded the files"
+	if [ "$useSSHFs" == "true" ]; then
+		# counter=1
+		qtyQueue=$(echo "$remoteQueueList" |wc -l)
+		echo "Found $qtyQueue new directories, starting download"
+		find "$localMountDir" -newermt "$lastDate" -type d -print -mindepth 1 -maxdepth 1 -exec cp -r {} "$destDir" \;
 
+	else #We're using rsync instead
+		counter=1
+		qtyQueue=$(echo "$remoteQueueList" |wc -l)
+		echo "Found $qtyQueue directories to download"
+		# DEBUGGING DESTINATION
+		# TDOD change debug to backup folder
+		
+		while IFS= read -r currentDir ; do
+			echo -e "[$counter/$qtyQueue] ${GREEN}Downloading: $(basename "$currentDir")${NC}"
+			currentDir=$(printf %q "$currentDir")
+			rsyncString=$(echo "$remoteHost":"'""$currentDir""'" "'""$destDir""'")
+			debugVar rsyncString
+			## TODO find out why I need to pass this through eval to work
+			# lmao wtf :shrug:
+			printf "${CYAN}  Progress:"
+			eval rsync "$rsyncString" -r --info=progress2 --bwlimit=$rsyncSpeedLimit --size-only
+			printf "${NC}\n"
+			((counter++))
+		done <<< "$remoteQueueList"
+	fi
+	echo -e "${GREEN}Downloaded all files${NC}"
+fi
+
+debugStep "Downloaded the files"
 
 #############################################
 ###    Audio processing
@@ -280,7 +306,7 @@ done < <(printf '%s\n' "$listFLACList")
 
 
 # Transcode all flacs to temp/ready
-if $transcodeFlac ; then
+if [ "$transcodeFlac" == "true" ] ; then
 	counter=1
 
 	debugEcho "We in the MF Flac house bitch"
