@@ -10,8 +10,9 @@ As I develop this further, I'll add more options for what this tool can do for y
 * ffmpeg
 * rsync
 * parallel
+* mp4v2-utils (optional, required if you want artwork with m4a files)
 
-Please install these
+Please install these using your favourite package manager.
 
 ## Installation
 * Get dependencies

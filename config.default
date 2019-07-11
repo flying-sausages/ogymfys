@@ -74,6 +74,9 @@ ffmpegFlacOptions="-acodec alac"
 # For conversion to AIFF use ".aif"
 # MAKE SURE TO INCLUDE THE DOT
 ffmpegFlacNewExtension=".m4a"
+# If you are transcoding to alac, artowkr won't transfer with ffmpeg, and this will fix it
+# This will only actually trigger if ffmpegflacoptions contains the string 'alac'
+ifAlacFixArtwork=true
 
 
 #############################################
@@ -81,7 +84,7 @@ ffmpegFlacNewExtension=".m4a"
 #############################################
 
 # The amount of parallel processes you want to run at the same time
-threadsToUse=4
+threadsToUse=8
 # Number of seconds to wait before moving a folder to the destination
 # For example, some people care for having albums together when sorting their libraries by date added,
 # which could confuse software which auto-imports from the destination directory

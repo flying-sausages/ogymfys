@@ -10,16 +10,11 @@
 ##########################################################################################
 ##########################################################################################
 
-
 #############################################
 ###    Dependencies
 #############################################
 
-
-
-# Please install ffmpeg, parallel, rsync
-
-
+# Please install ffmpeg, parallel, rsync and if you need it, mp4v2-utils
 
 #############################################
 ###    Functions
@@ -102,7 +97,6 @@ fi
 # shellcheck source=../.ogymfys/config
 source ~/.ogymfys/config
 
-
 fatalError=false
 
 #check if local folders exist
@@ -120,12 +114,12 @@ checkDeps ffmpeg
 checkDeps parallel
 #checkDeps sshfs
 checkDeps rsync
-
-if $fatalError ; then
-	echo "EXITING"
-	exit 1
+if [[ $ffmpegFlacOptions =~ "alac" ]]; then
+	if $ifAlacFixArtwork ; then
+		checkDeps mp4art
+	fi
 fi
-
+## todo for sshfs
 # if [ "$(ls -A $localMountDir)" ]; then    
 # 	sleep 0
 # else
@@ -135,11 +129,10 @@ fi
 
 # If we found some bad problems, quit
 if $fatalError ; then
-	echo "EXITING"
+	echo "Please remedy the mistakes above before continuing. Now terminating."
 	exit 1
 fi
 
-#TODO can ffmpeg run more threads at the same time than cores?
 #checking if the user didn't ask for more cores than the system has
 availableThreads=`cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l`
 
@@ -184,7 +177,6 @@ debugStep "Temporary directories made"
 #############################################
 ###    Downloading
 #############################################
-
 
 #If the folder is known to be empty, use the manual date instead
 if $isBackupEmpty ; then
@@ -271,6 +263,7 @@ fi
 listFLACList=`find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' |sort |uniq;echo ""`
 
 #Doing loops with empty IFS fucks with ffmpeg for some reason, probaby becuase of the fact things are being read from stdin?
+# Nope just WSL shit fuck this thing, i hope WSL2 is out soon so I can get rid of dumb shit like this
 #Converting newline separated list to an array
 listFLACQueue=()
 while IFS= read -r currentDir ; do
@@ -302,6 +295,48 @@ if $transcodeFlac ; then
 			mkdir "$newDir"
 			debugFunc ls -lah "$newDir"
 			parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions"  "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac
+			
+			#This will get the image from either file or folder and add it to the m4a file if we want, because ugly music is ugly
+			if [[ $ffmpegFlacOptions =~ "alac" ]]; then
+				if $ifAlacFixArtwork; then
+					arbitraryFlacFile=$(find "$currentDir" -type f -name '*.flac' | head -1 )
+					debugVar arbitraryFlacFile
+					if [ $debugVERBOSE ]; then 
+						ffmpeg -i "$arbitraryFlacFile" "$newDir"/cover.jpg
+					else
+						ffmpeg -v quiet -i "$arbitraryFlacFile" "$newDir"/cover.jpg
+					fi
+
+					if [ -f "$newDir/cover.jpg" ]; then
+						#ffmpeg was success
+						imageExt="jpg"
+						debugEcho "Image extracted from flac succesfully"
+					else
+						debugEcho "No image in flac, Checking for jpgs and pngs then"
+						#We're taking the first one to come up, should maybe prioritise for files atarting with "cover", "art", "folder" or something but w/e
+						imagePath=$(find "$currentDir" -type f   \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | head -1 )
+						debugVar imagePath
+						imageFile=$(basename "$imagePath")
+						debugVar imageFile
+						imageExt="${imageFile#*.}"
+						debugVar imageExt
+						cp "$imagePath"   "$newDir/cover.$imageExt" 
+					fi
+					debugEcho "did the image finding dance"
+
+					if [ -f "$newDir/cover.$imageExt" ]; then
+						debugEcho "we have an image"
+						if [ $debugVERBOSE ]; then 
+							parallel -j 1 mp4art --add {//}"/cover.$imageExt" {} --overwrite ::: "$newDir"/*.m4a
+						else
+							parallel -j 1 mp4art -q --add {//}"/cover.$imageExt" {} --overwrite ::: "$newDir"/*.m4a
+						fi
+						debugEcho "Added image via mp4art"
+					else
+						echo "no image extracted or found"
+					fi
+				fi
+			fi
 			echo -e "${GREEN}Done!${NC}"
 			((counter++))
 		done
@@ -319,7 +354,6 @@ fi
 
 echo "All files in the queue have been processed."
 
-# exit
 
 #############################################
 ###    File management
@@ -350,8 +384,8 @@ if $keepBackupsOfData; then
 #	  #sleep $sleepBeforeMove
 #	  rm -rf "$folder"
 #	done
-	debugEcho "$localTempDir"/queue/*
-	debugFunc echo "$localTempDir"/queue/*
+	# debugEcho "$localTempDir"/queue/*
+	debugFunc ls -lh "$localTempDir"/queue/
 	mv -t "$localBackupDir" "$localTempDir"/queue/*
 else
 	rm -rf "$localTempDir"/queue/*
