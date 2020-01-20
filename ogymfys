@@ -65,6 +65,13 @@ checkDir () {
 	fi
 }
 
+checkFile () {
+	if [ ! -f  "$1" ]; then
+		echo "The file" "$1" "does not exist. Please check ~/.omgymfys/config"
+		fatalError=true
+	fi
+}
+
 checkDeps () {
 	if [ "$(command -v $1)" = "" ] ;then
 		echo "This script requires $1, and that has not been found in the path. Please make sure it is installed and visible from your path."
@@ -109,6 +116,8 @@ checkDir $localDestDir
 # TODO When SSHFS works on WSL, get rid of this check as we'll be actually executing this step.
 #checkDir $localMountDir
 
+checkFile $sshKey
+
 #check if all dependencies are installed
 checkDeps ffmpeg
 checkDeps parallel
@@ -131,6 +140,13 @@ fi
 if $fatalError ; then
 	echo "Please remedy the mistakes above before continuing. Now terminating."
 	exit 1
+fi
+
+
+if [[ "$sshKey" != "" ]]; then
+	echo "Adding SSH key $sshKey to the agent"
+	eval "$(ssh-agent -s)"
+	ssh-add $sshKey
 fi
 
 #checking if the user didn't ask for more cores than the system has
@@ -301,10 +317,10 @@ if $transcodeFlac ; then
 				if $ifAlacFixArtwork; then
 					arbitraryFlacFile=$(find "$currentDir" -type f -name '*.flac' | head -1 )
 					debugVar arbitraryFlacFile
-					if [ $debugVERBOSE ]; then 
+					if  $debugVERBOSE ; then 
 						ffmpeg -i "$arbitraryFlacFile" "$newDir"/cover.jpg
 					else
-						ffmpeg -v quiet -i "$arbitraryFlacFile" "$newDir"/cover.jpg
+						ffmpeg -nostats -loglevel 0 -i "$arbitraryFlacFile" "$newDir"/cover.jpg
 					fi
 
 					if [ -f "$newDir/cover.jpg" ]; then
@@ -326,7 +342,7 @@ if $transcodeFlac ; then
 
 					if [ -f "$newDir/cover.$imageExt" ]; then
 						debugEcho "we have an image"
-						if [ $debugVERBOSE ]; then 
+						if  $debugVERBOSE ; then 
 							parallel -j 1 mp4art --add {//}"/cover.$imageExt" {} --overwrite ::: "$newDir"/*.m4a
 						else
 							parallel -j 1 mp4art -q --add {//}"/cover.$imageExt" {} --overwrite ::: "$newDir"/*.m4a
