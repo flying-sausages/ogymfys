@@ -26,54 +26,60 @@ CYAN='\033[0;36m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
-debugEcho () {
+debugEcho() {
 	if $debugVERBOSE; then
-	echo -e "${RED}D${YELLOW}ECHO${NC}" "$@"
+		echo -e "${RED}D${YELLOW}ECHO${NC}" "$@"
 	fi
 }
 
-debugFunc () {
+debugFunc() {
 	if $debugVERBOSE; then
 		echo -e "${RED}DEBUG${NC}" "$@"
 		echo -e "${RED}╚═══▷${NC}" $(eval "$@")
 	fi
 }
 
-debugVar () {
-    if $debugVERBOSE; then
-        echo -e "${RED}DEBUG${NC}" "$1"
-        echo -e "${RED}╚═══▷${NC}" $(declare -p $1) "\n"
-    fi
-}
-
-debugStep () {
-	if $debugSTEPPING; then
-		echo -e "${RED}DEBUG${CYAN}" $1" ${NC}| Continue? (y/N)"
-	    read choice
-	    case $choice in
-	        [Yy]* ) echo -e "${RED}╚═══▷${GREEN} continuing${NC}";;
-	        [Nn]* ) echo -e "${RED}╚═══▷ exiting${NC}"; exit;;
-	        * ) echo -e "${RED}╚═══▷ exiting${NC}"; exit;;
-        esac
+debugVar() {
+	if $debugVERBOSE; then
+		echo -e "${RED}DEBUG${NC}" "$1"
+		echo -e "${RED}╚═══▷${NC}" $(declare -p $1) "\n"
 	fi
 }
 
-checkDir () {
-	if [ ! -d  "$1" ]; then
+debugStep() {
+	if $debugSTEPPING; then
+		echo -e "${RED}DEBUG${CYAN}" $1" ${NC}| Continue? (y/N)"
+		read choice
+		case $choice in
+			[Yy]*) echo -e "${RED}╚═══▷${GREEN} continuing${NC}" ;;
+			[Nn]*)
+				echo -e "${RED}╚═══▷ exiting${NC}"
+				exit
+				;;
+			*)
+				echo -e "${RED}╚═══▷ exiting${NC}"
+				exit
+				;;
+		esac
+	fi
+}
+
+checkDir() {
+	if [ ! -d "$1" ]; then
 		echo "The directory" "$1" "does not exist. Please check ~/.omgymfys/config"
 		fatalError=true
 	fi
 }
 
-checkFile () {
-	if [ ! -f  "$1" ]; then
+checkFile() {
+	if [ ! -f "$1" ]; then
 		echo "The file" "$1" "does not exist. Please check ~/.omgymfys/config"
 		fatalError=true
 	fi
 }
 
-checkDeps () {
-	if [ "$(command -v $1)" = "" ] ;then
+checkDeps() {
+	if [ "$(command -v $1)" = "" ]; then
 		echo "This script requires $1, and that has not been found in the path. Please make sure it is installed and visible from your path."
 		fatalError=true
 	fi
@@ -82,13 +88,15 @@ checkDeps () {
 #This makes it so that whenever you press CTRL+C, the function gets called.
 trap ctrl_c INT
 function ctrl_c() {
-        echo -e "   ${RED}SCRIPT INTERRUPTED${NC}"
-        exit 1
+	echo -e "   ${RED}SCRIPT INTERRUPTED${NC}"
+	exit 1
 }
 
 #############################################
 ###    Verifications
 #############################################
+
+_verification() {
 
 	ogyconfpath="$HOME/.config/ogymfys/"
 	if [ ! -f "$ogyconfpath" ]; then 	#There's no config
@@ -107,106 +115,106 @@ function ctrl_c() {
 
 	#shellcheck source=../../.config/ogymfys
 	source "$ogyconfpath"
-fatalError=false
 
-#check if local folders exist
-debugVar localBackupDir
+	fatalError=false
 
-checkDir $localBackupDir
-# checkDir $localTempDir
-debugVar localDestDir
-checkDir $localDestDir
-# TODO When SSHFS works on WSL, get rid of this check as we'll be actually executing this step.
-#checkDir $localMountDir
+	#check if local folders exist
+	debugVar localBackupDir
 
-checkFile $sshKey
+	checkDir $localBackupDir
+	# checkDir $localTempDir
+	debugVar localDestDir
+	checkDir $localDestDir
+	# TODO When SSHFS works on WSL, get rid of this check as we'll be actually executing this step.
+	#checkDir $localMountDir
 
-#check if all dependencies are installed
-checkDeps ffmpeg
-checkDeps parallel
-#checkDeps sshfs
-checkDeps rsync
-if [[ $ffmpegFlacOptions =~ "alac" ]]; then
-	if $ifAlacFixArtwork ; then
-		checkDeps mp4art
+	checkFile $sshKey
+
+	#check if all dependencies are installed
+	checkDeps ffmpeg
+	checkDeps parallel
+	#checkDeps sshfs
+	checkDeps rsync
+	if [[ $ffmpegFlacOptions =~ "alac" ]]; then
+		if $ifAlacFixArtwork; then
+			checkDeps mp4art
+		fi
 	fi
-fi
-## todo for sshfs
-# if [ "$(ls -A $localMountDir)" ]; then    
-# 	sleep 0
-# else
-#     echo "$localMountDir is empty, so there's nothing to sync. Is everything mounted right?"
-#     fatalError=true
-# fi
+	## todo for sshfs
+	# if [ "$(ls -A $localMountDir)" ]; then
+	# 	sleep 0
+	# else
+	#     echo "$localMountDir is empty, so there's nothing to sync. Is everything mounted right?"
+	#     fatalError=true
+	# fi
 
-# If we found some bad problems, quit
-if $fatalError ; then
-	echo "Please remedy the mistakes above before continuing. Now terminating."
-	exit 1
-fi
+	# If we found some bad problems, quit
+	if $fatalError; then
+		echo "Please remedy the mistakes above before continuing. Now terminating."
+		exit 1
+	fi
 
+	if [[ "$sshKey" != "" ]]; then
+		echo "Adding SSH key $sshKey to the agent"
+		eval "$(ssh-agent -s)"
+		ssh-add $sshKey
+	fi
 
-if [[ "$sshKey" != "" ]]; then
-	echo "Adding SSH key $sshKey to the agent"
-	eval "$(ssh-agent -s)"
-	ssh-add $sshKey
-fi
+	#checking if the user didn't ask for more cores than the system has
+	availableThreads=$(cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l)
 
-#checking if the user didn't ask for more cores than the system has
-availableThreads=`cat /proc/cpuinfo | awk '/^processor/{print $3}' | wc -l`
+	debugVar availableThreads
+	debugVar threadsToUse
 
-debugVar availableThreads
-debugVar threadsToUse
+	#If the machine has less threads than user wanted, use max.
+	if [ "$availableThreads" -lt "$threadsToUse" ]; then
+		echo "You only have "$availableThreads" available CPU threads, which is more than what you asked for. We will therefore use all available."
+		threadsToUse=$availableThreads
+	fi
 
-#If the machine has less threads than user wanted, use max.
-if [ "$availableThreads" -lt "$threadsToUse" ];
-then
-	echo "You only have "$availableThreads" available CPU threads, which is more than what you asked for. We will therefore use all available."
-	threadsToUse=$availableThreads
-fi
+	####### BIG ASS TODO RIGHT HERE
 
-####### BIG ASS TODO RIGHT HERE
+	# #when using SSHFS, check that the directory is mounted using sshfs and do so if necessary
+	# if $useSSHFs; then
+	# 	if [ "$(stat --file-system --format=%T $localMountDir )" != "fuse.sshfs" ]
+	# 	then
+	# 		debugFunc stat --file-system --format=%T $localMountDir
+	# 		echo "##### "$localMountDir" is not sshfs mounted"
+	# 		echo "SSHFs needs sudo to mount directories, please provide that now. ^C to cancel"
+	# 		#We alredy know the local mount dir exists as the script would have failed otherwise
+	# 		sudo sshfs "$remoteHost":"$remoteMusicDir" "$localMountDir"
+	# 		# TODO check if the mount was succesful
+	# 	fi
+	# fi
 
-# #when using SSHFS, check that the directory is mounted using sshfs and do so if necessary
-# if $useSSHFs; then
-# 	if [ "$(stat --file-system --format=%T $localMountDir )" != "fuse.sshfs" ]
-# 	then
-# 		debugFunc stat --file-system --format=%T $localMountDir
-# 		echo "##### "$localMountDir" is not sshfs mounted"
-# 		echo "SSHFs needs sudo to mount directories, please provide that now. ^C to cancel"
-# 		#We alredy know the local mount dir exists as the script would have failed otherwise
-# 		sudo sshfs "$remoteHost":"$remoteMusicDir" "$localMountDir"
-# 		# TODO check if the mount was succesful
-# 	fi
-# fi
+	debugStep "All dependencies are fine, continue?"
 
-debugStep "All dependencies are fine, continue?"
+	#If the temp locations don't exist, make sure to create them
+	debugFunc checkDir $localTempDir
+	debugFunc checkDir $localTempDir/ready
+	debugFunc checkDir $localTempDir/queue
+	if [ ! -d "$localTempDir" ]; then mkdir -p "$localTempDir"; fi
+	if [ ! -d "$localTempDir"/ready ]; then mkdir "$localTempDir"/ready; fi
+	if [ ! -d "$localTempDir"/queue ]; then mkdir "$localTempDir"/queue; fi
 
-
-#If the temp locations don't exist, make sure to create them
-debugFunc checkDir $localTempDir
-debugFunc checkDir $localTempDir/ready
-debugFunc checkDir $localTempDir/queue
-if [ ! -d "$localTempDir" ]; then mkdir -p "$localTempDir"; fi
-if [ ! -d "$localTempDir"/ready ]; then mkdir "$localTempDir"/ready; fi
-if [ ! -d "$localTempDir"/queue ]; then	mkdir "$localTempDir"/queue; fi
-
-debugStep "Temporary directories made"
+	debugStep "Temporary directories made"
+}
+_verification
 
 #############################################
 ###    Downloading
 #############################################
 
 #If the folder is known to be empty, use the manual date instead
-if $isBackupEmpty ; then
+if $isBackupEmpty; then
 	lastDateDirty=$dateToSyncFrom
 else
-	lastDateDirty=`stat -c "%x" $localBackupDir/* | sort |tail -n 1 | cut -f1 -d"."`
+	lastDateDirty=$(stat -c "%x" $localBackupDir/* | sort | tail -n 1 | cut -f1 -d".")
 	debugFunc 'stat -c "%x" "$localBackupDir"/* | sort |tail -n 1 | cut -f1 -d"."'
 fi
 
 #Format the date for the find command
-lastDate=`date -d"$lastDateDirty" +%Y-%m-%dT%H:%M:%S`
+lastDate=$(date -d"$lastDateDirty" +%Y-%m-%dT%H:%M:%S)
 debugVar lastDate
 
 debugStep "Formatted the date"
@@ -227,10 +235,10 @@ if [ "$remoteQueueList" == "" ]; then
 	exit
 fi
 
-echo "Found $(echo "$remoteQueueList" |wc -l) directories to download"
+echo "Found $(echo "$remoteQueueList" | wc -l) directories to download"
 
 counter=1
-qtyQueue=$(echo "$remoteQueueList" |wc -l)
+qtyQueue=$(echo "$remoteQueueList" | wc -l)
 
 if $debugDRYRUN; then
 	debugEcho "Would be downloading the following directories:"
@@ -239,7 +247,7 @@ else
 	# DEBUGGING DESTINATION
 	# TDOD change debug to backup folder
 	destDir="$localTempDir"/queue
-	while IFS= read -r currentDir ; do
+	while IFS= read -r currentDir; do
 		echo -e "[$counter/$qtyQueue] ${GREEN}Downloading: $(basename "$currentDir")${NC}"
 		currentDir=$(printf %q "$currentDir")
 		rsyncString=$(echo "$remoteHost":"'""$currentDir""'" "'""$destDir""'")
@@ -255,21 +263,20 @@ fi
 echo -e "${GREEN}Downloaded all files${NC}"
 debugStep "Downloaded the files"
 
-
 #############################################
 ###    Audio processing
 #############################################
 
 ###### WE ARE NOT GOING TO PROCESS MP3s IN ANY WAY
 # Copy all mp3s to temp/ready
-listMP3Queue=`find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' |sort |uniq`
+listMP3Queue=$(find "$localTempDir"/queue -type f -name '*.mp3' | sed -r 's|/[^/]+$||' | sort | uniq)
 
 if [ "$listMP3Queue" == "" ]; then
 	echo "There are no folders with MP3s."
 else
 	#For each folder in the MP3 Queue
-	echo "There are $(echo "$listMP3Queue"| wc -l) MP3 Folders, moving them to the ready state"
-	while IFS= read -r currentDir ; do
+	echo "There are $(echo "$listMP3Queue" | wc -l) MP3 Folders, moving them to the ready state"
+	while IFS= read -r currentDir; do
 		debugVar currentDir
 		newDir="$localTempDir/ready/"$(basename "$currentDir")
 		debugVar newDir
@@ -279,20 +286,22 @@ else
 fi
 
 #Get all folders with flacs in them
-listFLACList=`find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' |sort |uniq;echo ""`
+listFLACList=$(
+	find "$localTempDir"/queue -type f -name '*.flac' | sed -r 's|/[^/]+$||' | sort | uniq
+	echo ""
+)
 
 #Doing loops with empty IFS fucks with ffmpeg for some reason, probaby becuase of the fact things are being read from stdin?
 # Nope just WSL shit fuck this thing, i hope WSL2 is out soon so I can get rid of dumb shit like this
 #Converting newline separated list to an array
 listFLACQueue=()
-while IFS= read -r currentDir ; do
+while IFS= read -r currentDir; do
 	# echo " $currentDir boooop"
-    listFLACQueue+=("$currentDir")
+	listFLACQueue+=("$currentDir")
 done < <(printf '%s\n' "$listFLACList")
 
-
 # Transcode all flacs to temp/ready
-if $transcodeFlac ; then
+if $transcodeFlac; then
 	counter=1
 
 	debugEcho "We in the MF Flac house bitch"
@@ -302,25 +311,25 @@ if $transcodeFlac ; then
 		echo "There are no folders containing FLACs"
 	else
 		echo "There are ${#listFLACQueue[@]} folders containing FLACs."
-		for currentDir in "${listFLACQueue[@]}" ;do
+		for currentDir in "${listFLACQueue[@]}"; do
 			echo -e "[$counter/${#listFLACQueue[@]}] ${GREEN}Transcoding: $(basename "$currentDir")${NC}"
 			# TODO Handle folders with sub-folders
 			newDir="$localTempDir/ready/"$(basename "$currentDir")
 			debugVar newDir
-			if [ -d  "$newDir" ]; then
+			if [ -d "$newDir" ]; then
 				echo "The directory $newDir already exists, removing previous files."
 				rm -rf "$newDir"
 			fi
 			mkdir "$newDir"
 			debugFunc ls -lah "$newDir"
-			parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions"  "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac
-			
+			parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions" "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac
+
 			#This will get the image from either file or folder and add it to the m4a file if we want, because ugly music is ugly
 			if [[ $ffmpegFlacOptions =~ "alac" ]]; then
 				if $ifAlacFixArtwork; then
-					arbitraryFlacFile=$(find "$currentDir" -type f -name '*.flac' | head -1 )
+					arbitraryFlacFile=$(find "$currentDir" -type f -name '*.flac' | head -1)
 					debugVar arbitraryFlacFile
-					if  $debugVERBOSE ; then 
+					if $debugVERBOSE; then
 						ffmpeg -i "$arbitraryFlacFile" "$newDir"/cover.jpg
 					else
 						ffmpeg -nostats -loglevel 0 -i "$arbitraryFlacFile" "$newDir"/cover.jpg
@@ -333,19 +342,19 @@ if $transcodeFlac ; then
 					else
 						debugEcho "No image in flac, Checking for jpgs and pngs then"
 						#We're taking the first one to come up, should maybe prioritise for files atarting with "cover", "art", "folder" or something but w/e
-						imagePath=$(find "$currentDir" -type f   \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | head -1 )
+						imagePath=$(find "$currentDir" -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | head -1)
 						debugVar imagePath
 						imageFile=$(basename "$imagePath")
 						debugVar imageFile
 						imageExt="${imageFile#*.}"
 						debugVar imageExt
-						cp "$imagePath"   "$newDir/cover.$imageExt" 
+						cp "$imagePath" "$newDir/cover.$imageExt"
 					fi
 					debugEcho "did the image finding dance"
 
 					if [ -f "$newDir/cover.$imageExt" ]; then
 						debugEcho "we have an image"
-						if  $debugVERBOSE ; then 
+						if $debugVERBOSE; then
 							parallel -j 1 mp4art --add {//}"/cover.$imageExt" {} --overwrite ::: "$newDir"/*.m4a
 						else
 							parallel -j 1 mp4art -q --add {//}"/cover.$imageExt" {} --overwrite ::: "$newDir"/*.m4a
@@ -363,7 +372,7 @@ if $transcodeFlac ; then
 else #If we're not transcoding flacs...
 	#for each flac folder, copy the folder to the ready queue
 	echo "Moving FLAC folders straight to the ready queue"
-	while IFS= read -r currentDir ; do
+	while IFS= read -r currentDir; do
 		debugVar currentDir
 		newDir="$localTempDir/ready/$(basename "$currentDir")"
 		debugVar newDir
@@ -373,7 +382,6 @@ fi
 
 echo "All files in the queue have been processed."
 
-
 #############################################
 ###    File management
 #############################################
@@ -381,28 +389,26 @@ echo "All files in the queue have been processed."
 debugStep "About to move ready queue to the destination"
 # Move all new ready media to destination
 debugEcho "Starting the ready move to Destination"
-for folder in "$localTempDir"/ready/*
-do
-  debugVar folder
-  mv "$folder" "$localDestDir/"
-  echo "Moved "$(basename "$folder")" to destination"
-  sleep $sleepBeforeMove
-  rm -rf "$folder"
+for folder in "$localTempDir"/ready/*; do
+	debugVar folder
+	mv "$folder" "$localDestDir/"
+	echo "Moved "$(basename "$folder")" to destination"
+	sleep $sleepBeforeMove
+	rm -rf "$folder"
 done
 debugEcho "Finished ready to destination"
-
 
 debugStep "About to move queue to backups"
 #move all downloaded files to backup
 if $keepBackupsOfData; then
 	# Move all new ready media to destination
-##	for folder in $localTempDir/queue/*
-#	do
-#	  mv "$folder" "$localBackupDir/"
-#	  #echo "Moved "$(basename "$folder")" to destination"
-#	  #sleep $sleepBeforeMove
-#	  rm -rf "$folder"
-#	done
+	##	for folder in $localTempDir/queue/*
+	#	do
+	#	  mv "$folder" "$localBackupDir/"
+	#	  #echo "Moved "$(basename "$folder")" to destination"
+	#	  #sleep $sleepBeforeMove
+	#	  rm -rf "$folder"
+	#	done
 	# debugEcho "$localTempDir"/queue/*
 	debugFunc ls -lh "$localTempDir"/queue/
 	mv -t "$localBackupDir" "$localTempDir"/queue/*
