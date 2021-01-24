@@ -98,8 +98,8 @@ function ctrl_c() {
 
 _verification() {
 
-	ogyconfpath="$HOME/.config/ogymfys/"
-	if [ ! -f "$ogyconfpath" ]; then 	#There's no config
+	ogyconfpath="$HOME/.config/ogymfys"
+	if [ ! -f "$ogyconfpath" ]; then #There's no config
 		mkdir -p ~/.config/
 		if [ -e ~/.ogymfys/config ]; then
 			echo "Moving old config to new path"
