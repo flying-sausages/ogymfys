@@ -90,20 +90,23 @@ function ctrl_c() {
 ###    Verifications
 #############################################
 
-if [ ! -f  ~/.ogymfys/config ]; then
-	#There's no config
-	echo "There is no file at ~/.ogymfys/config, we'll copy a template there for ya."
-	DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
-	if [ ! -d ~/.ogymfys/ ]; then
-		mkdir -p ~/.ogymfys/
+	ogyconfpath="$HOME/.config/ogymfys/"
+	if [ ! -f "$ogyconfpath" ]; then 	#There's no config
+		mkdir -p ~/.config/
+		if [ -e ~/.ogymfys/config ]; then
+			echo "Moving old config to new path"
+			mv ~/.ogymfys/config "$ogyconfpath"
+		else
+			echo "There is no file at $ogyconfpath, we'll copy a template there for ya."
+			DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null && pwd)"
+			cp "$DIR/config.default" "$ogyconfpath"
+			echo "Please edit the file with your editor of choice and run the script again."
+			exit 10
+		fi
 	fi
-	cp "$DIR/config.default" ~/.ogymfys/config
-	echo "Please edit the file with your editor of choice and run the script again."
-	exit 
-fi
-# shellcheck source=../.ogymfys/config
-source ~/.ogymfys/config
 
+	#shellcheck source=../../.config/ogymfys
+	source "$ogyconfpath"
 fatalError=false
 
 #check if local folders exist
