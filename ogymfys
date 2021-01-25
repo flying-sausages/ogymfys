@@ -329,7 +329,10 @@ _audio_processing() {
 				fi
 				mkdir "$newDir"
 				debugFunc ls -lah "$newDir"
-				parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions" "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac
+				parallel -j "$threadsToUse" ffmpeg -v quiet -nostats -i {} "$ffmpegFlacOptions" "$(printf %q "$newDir/")"{/.}"$ffmpegFlacNewExtension" ::: "$currentDir"/*.flac || {
+					echo "Something broke during conversion! Aborting task"
+					exit 1
+				}
 
 				#This will get the image from either file or folder and add it to the m4a file if we want, because ugly music is ugly
 				if [[ $ffmpegFlacOptions =~ "alac" ]]; then

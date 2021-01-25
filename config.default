@@ -69,7 +69,7 @@ transcodeFlac=true
 # Arguments to pass to ffmpeg for flac processing
 # This argument can be left empty most of the time, unless you know what you need.
 # For conversion to ALAC use "-acodec alac"
-ffmpegFlacOptions="-acodec alac"
+ffmpegFlacOptions="-c:a alac -c:v copy"
 # For conversion to ALAC use ".m4a"
 # For conversion to AIFF use ".aif"
 # MAKE SURE TO INCLUDE THE DOT
